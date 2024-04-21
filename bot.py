@@ -38,13 +38,23 @@ async def setup_bot_commands():
     await bot.set_my_commands(bot_commands)
 
 
-# async def on_startup(bot: Bot) -> None:
-#     # If you have a self-signed SSL certificate, then you will need to send a public
-#     # certificate to Telegram
-#     await bot.set_webhook(f"{BASE_WEBHOOK_URL}{WEBHOOK_PATH}", secret_token=WEBHOOK_SECRET)
+async def on_startup(bot: Bot) -> None:
+    # If you have a self-signed SSL certificate, then you will need to send a public
+    # certificate to Telegram
+    await bot.set_webhook(f"{BASE_WEBHOOK_URL}{WEBHOOK_PATH}", secret_token=WEBHOOK_SECRET)
 
 
-async def main() -> None:
+async def main_debug() -> None:
+    router = Router()
+    # Dispatcher is a root router
+    dp = Dispatcher()
+    dp.update.outer_middleware(middleware=midware.BlacklistMiddleware())
+    # ... and all other routers should be attached to Dispatcher
+    dp.include_routers(text_processing.router, callbacks.router, commands.router)
+    await dp.start_polling(bot, skip_updates=True, on_startup=setup_bot_commands)
+
+
+def main_prod() -> None:
     router = Router()
     # Dispatcher is a root router
     dp = Dispatcher()
@@ -52,7 +62,7 @@ async def main() -> None:
     # ... and all other routers should be attached to Dispatcher
     dp.include_routers(text_processing.router, callbacks.router, commands.router)
     # Register startup hook to initialize webhook
-    # dp.startup.register(on_startup)
+    dp.startup.register(on_startup)
 
     if bool(int(os.environ.get("enabled_webhook"))):
         # Create aiohttp.web.Application instance
@@ -74,14 +84,13 @@ async def main() -> None:
 
         # And finally start webserver
         web.run_app(app, host=WEB_SERVER_HOST, port=WEB_SERVER_PORT)
-    else:
-        await dp.start_polling(bot, skip_updates=True, on_startup=setup_bot_commands)
 
 
 if __name__ == "__main__":
     if bool(int(os.environ.get("debug"))):
         logging.basicConfig(format="%(levelname)s | %(asctime)s | %(message)s", level=logging.DEBUG, stream=sys.stdout)
+        asyncio.run(main_debug())
     else:
         logging.basicConfig(format="%(levelname)s | %(asctime)s | %(message)s", filename="talk_bot.log", level=logging.DEBUG)
+        asyncio.run(main_prod())
     logging.info("Bot starts")
-    asyncio.run(main())
